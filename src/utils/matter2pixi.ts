@@ -4,7 +4,8 @@ import { Graphics } from "pixi.js";
 export type PixiToMatterObjMap = Map<Graphics, Body>;
 
 export default class Matter2Pixi {
-	static bodyToGraphics(body: Body): Graphics {
+	static bodyToGraphics(body: Body): Graphics | null {
+		if (!body.render.visible) return null;
 		const graphic = new Graphics();
 		const vertices = body.vertices.map(vertex => {
 			return {
@@ -31,7 +32,9 @@ export default class Matter2Pixi {
 		if (output) graphics = output;
 		else graphics = new Map<Graphics, Body>();
 		Composite.allBodies(composite).forEach((body) => {
-			graphics.set(this.bodyToGraphics(body), body);
+			const graphic = this.bodyToGraphics(body);
+			if (graphic == null) return;
+			graphics.set(graphic, body);
 		})
 		return graphics;
 	}

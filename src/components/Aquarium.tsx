@@ -36,13 +36,14 @@ export default function Aquarium() {
 	async function aquariumInit() {
 		if (!aquariumCanvas.current) return;
 		let engine = Engine.create();
-		engine.gravity.y = 0;
+		engine.gravity.y = 0.001;
+		engine.gravity.x = 0.001;
 
 		pixiApp.current = new Application();
 		await pixiApp.current.init({
 			backgroundAlpha: 0,
 			resizeTo: aquariumCanvas.current,
-			antialias: true
+			antialias: true,
 		});
 		aquariumCanvas.current.appendChild(pixiApp.current.canvas);
 
@@ -61,7 +62,7 @@ export default function Aquarium() {
 		let animals = Array<Animal>();
 		let aquariumGroup = Body.nextGroup(true);
 
-		let jellyfish = new Jellyfish(400, 500, 150, 400, 'rgb(255, 13, 134)', aquariumGroup);
+		let jellyfish = new Jellyfish(400, 500, 150, 300, 'rgb(255, 13, 134)', aquariumGroup);
 
 		animals.push(jellyfish);
 		animals.forEach((animal) => {
@@ -116,15 +117,17 @@ export default function Aquarium() {
 
 		let aquariumGroup = Body.nextGroup(true);
 
-		let jellyfish = new Jellyfish(400, 200, 125, 250, 'rgb(255, 13, 134)', aquariumGroup);
+		let jellyfish = new Jellyfish(400, 200, 200, 400, 'rgb(255, 13, 134)', aquariumGroup);
 		Composite.add(engine.world, jellyfish.jellyfishComposite);
 
 		render.current.mouse = mouse;
 
 		Render.run(render.current);
 		let runner = Runner.create();
+
 		Runner.run(runner, engine);
 	}
+
 
 	return (
 		<div id="aquarium" className="w-full h-full bg-gray-950" ref={aquariumCanvas} />
