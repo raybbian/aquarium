@@ -1,35 +1,56 @@
 import Matter2Pixi, { PixiToMatterObjMap } from '@/utils/matter2pixi';
 import Random from '@/utils/random';
-import { Body, Bodies, Composite, Composites, Constraint, Engine, Vector, Vertices, Vertex } from 'matter-js';
-import { Application, Graphics, VideoSource } from 'pixi.js';
-import { Animal } from './animal';
+import { Body, Bodies, Composite, Composites, Constraint, Engine, Vector, Vertices, Vertex, Mouse } from 'matter-js';
+import { Application, ColorSource, Graphics } from 'pixi.js';
 import Interpolate from '@/utils/interpolate';
+import { SpringValue } from '@react-spring/web';
 
 
-export class Jellyfish extends Animal {
-	jellyfishComposite: Composite;
-	jellyfishGraphics: PixiToMatterObjMap;
+export class Jellyfish {
+	initialized: boolean = false;
+	width: number;
+	get id() { return this.composite.id }
 
-	jellyfishTentacles: Composite[];
-	jellyfishArms: Composite[];
-	jellyfishHeadSegments: Composite;
+	private composite: Composite;
+	private tentacles: Composite[];
+	private arms: Composite[];
+	private headSegments: Composite;
+	private graphic2BodyMap: PixiToMatterObjMap;
 
-	// NOTE: for pixi graphics that change shape
-	private pixiApp?: Application;
-	private fakeHead?: Graphics;
+	// NOTE: for hover displays
+	headHull?: Vertex[];
+	position?: Vector;
+	direction?: Vector;
+	baseAngle?: Vector;
+	private isHovered: boolean = false;
+	private opacitySpring: SpringValue;
+	private colorSpring: SpringValue;
+	onMouseEnter?: (_: Jellyfish) => void;
+	onMouseLeave?: (_: Jellyfish) => void;
+
+	// NOTE: fake head doesn't have corresponding body, so need to manage sep
+	private fakeHead: Graphics;
 
 	// NOTE: for behavior
 	private head: Body;
+	private headCenterWidth: number;
+	private mass: number;
 	private headEdgePieces: (Body | null)[];
 	private elapsedMS = 0;
 	private runBehavior: boolean = true;
+	mouse?: Mouse;
+	private swimIntervalModifier = Random.uniform(0.8, 1.2);
 
 	// NOTE: tentacle information
-	private width: number;
 	private numTentacles: number;
 
+	private static CONSTRAINT_STIFFNESS = 0.4;
+	private static CONSTRAINT_LENGTH = 0;
+	private static OPACITY = 0.5;
+	private static HOVER_OPACITY = 0.7;
+	private static MAX_TURN_RATIO = 1;
+
 	private static HEAD_FRICTION = 0.01;
-	private static HEAD_OPACITY = 0.85;
 	private static HEAD_NUM_SEGMENTS = 10;
 	private static HEAD_SEGMENT_H_TO_WIDTH = 0.1;
 	private static HEAD_CENTER_W_TO_WIDTH = 0.2;
@@ -40,25 +61,20 @@ export class Jellyfish extends Animal {
 	private static HEAD_RIM_CONSTRAINT_LEN = 0;
 	private static HEAD_TRAPEZOID_SLOPE = 0.1;
 
-	private static constraintStiffness = 0.4;
-	private static constraintLength = 0;
-
 	private static TENTACLE_BASE_NUM = 10;
-	private static TENTACLE_SEGMENT_H = 10;
+	private static TENTACLE_SEGMENT_H = 20;
 	private static TENTACLE_SEGMENT_W_TO_WIDTH = 0.01;
-	private static TENTACLE_FRICTION = 0.015;
-	private static TENTACLE_OPACITY = 0.7;
+	private static TENTACLE_FRICTION = 0.03;
 
 	private static ARM_BASE_NUM = 4;
 	private static ARM_BASE_W_TO_WIDTH = 0.07;
-	private static ARM_GAP_TO_WIDTH = 0.05;
+	private static ARM_GAP_TO_WIDTH = 0.03;
 	private static ARM_FRICTION = 0.02;
-	private static ARM_OPACITY = 0.75;
 	private static ARM_TO_TENTACLE_LENGTH = 0.6;
 
-	private static SWIM_INTERVAL_MS = 2000;
+	private static SWIM_INTERVAL_MS = 3000;
 	private static SWIM_COMPRESS_DURATION = 500;
-	private static SWIM_FORCE_DURATION = 400;
+	private static SWIM_FORCE_DURATION = 800;
 
 	private static CAT_MOUSE = 1 << 0;
 	private static CAT_HEAD_CENTER = 1 << 1;
@@ -66,22 +82,19 @@ export class Jellyfish extends Animal {
 	private static CAT_ARM = 1 << 4;
 	private static CAT_TENTACLE = 1 << 5;
 
-	constructor(cx: number, cy: number, width: number, tentacleLen: number, color: string, group: number) {
-		super();
+	constructor(cx: number, cy: number, width: number, tentacleLen: number, color: string) {
 		this.width = width;
-
-		this.jellyfishComposite = Composite.create();
-
-		this.jellyfishHeadSegments = Composite.create();
+		this.composite = Composite.create();
+		this.headSegments = Composite.create();
 		// NOTE: build center
 		const headSegmentHeight = width * Jellyfish.HEAD_SEGMENT_H_TO_WIDTH;
-		const headCenterWidth = width * Jellyfish.HEAD_CENTER_W_TO_WIDTH;
-		const headSegmentWidth = (width - headCenterWidth) / Jellyfish.HEAD_NUM_SEGMENTS - 2 * Jellyfish.HEAD_TRAPEZOID_SLOPE * headSegmentHeight;
+		this.headCenterWidth = width * Jellyfish.HEAD_CENTER_W_TO_WIDTH;
+		const headSegmentWidth = (width - this.headCenterWidth) / Jellyfish.HEAD_NUM_SEGMENTS - 2 * Jellyfish.HEAD_TRAPEZOID_SLOPE * headSegmentHeight;
 		const trapezoidCornerLocation = 0.5 - (Jellyfish.HEAD_TRAPEZOID_SLOPE * headSegmentHeight) / headSegmentWidth;
 		const headCenter = Bodies.rectangle(
 			cx,
 			cy,
-			headCenterWidth,
+			this.headCenterWidth,
 			headSegmentHeight,
 			{
 				collisionFilter: {
@@ -90,30 +103,22 @@ export class Jellyfish extends Animal {
 					mask: Jellyfish.CAT_MOUSE
 				},
 				frictionAir: Jellyfish.HEAD_FRICTION,
-				render: {
-					fillStyle: color,
-					opacity: Jellyfish.HEAD_OPACITY,
-				},
+				render: { fillStyle: 'white' },
 				label: "Jellyfish",
 			},
 		);
 		this.head = headCenter;
-		Composite.add(this.jellyfishHeadSegments, headCenter);
+		Composite.add(this.headSegments, headCenter);
 
 		// NOTE: build edge
 		this.headEdgePieces = Array(2).fill(null);
-		[[-1, -(Jellyfish.HEAD_NUM_SEGMENTS + 1) * headSegmentWidth, 0], [1, 0, Jellyfish.HEAD_NUM_SEGMENTS - 1]].forEach(([dir, stOffset, endInd]) => {
+		[[-1, -(Jellyfish.HEAD_NUM_SEGMENTS + 1) * headSegmentWidth], [1, 0]].forEach(([dir, stOffset]) => {
 			let ind = 0;
 			const segments = Composites.stack(
-				(cx + headCenterWidth / 2 * dir) + stOffset,
+				(cx + this.headCenterWidth / 2 * dir) + stOffset,
 				cy - headSegmentHeight / 2,
 				Jellyfish.HEAD_NUM_SEGMENTS, 1, 0, 0,
 				(x: number, y: number) => {
-					const chamfer = Array(4).fill(0);
-					if (ind == endInd) {
-						chamfer[(dir + 1)] = headSegmentHeight / 2;
-						chamfer[1 + (dir + 1)] = headSegmentHeight / 2;
-					}
 					const segment = Bodies.trapezoid(
 						x, y, headSegmentWidth, headSegmentHeight, -Jellyfish.HEAD_TRAPEZOID_SLOPE,
 						{
@@ -123,12 +128,7 @@ export class Jellyfish extends Animal {
 								mask: Jellyfish.CAT_MOUSE
 							},
 							frictionAir: Jellyfish.HEAD_FRICTION,
-							render: {
-								fillStyle: color,
-								opacity: Jellyfish.HEAD_OPACITY,
-							},
 							label: "Jellyfish",
-							chamfer: { radius: chamfer }
 						}
 					);
 					ind++;
@@ -136,7 +136,7 @@ export class Jellyfish extends Animal {
 				}
 			);
 			this.headEdgePieces[(dir + 1) / 2] = segments.bodies.at(-(dir + 1) / 2)!;
-			Composite.add(this.jellyfishHeadSegments, segments);
+			Composite.add(this.headSegments, segments);
 
 			[
 				[trapezoidCornerLocation, Jellyfish.HEAD_RIM_INNER_STIFFNESS, Jellyfish.HEAD_RIM_INNER_DAMPING, 0.5],
@@ -146,28 +146,24 @@ export class Jellyfish extends Animal {
 					stiffness: stiffness,
 					damping: damping,
 					length: Jellyfish.HEAD_RIM_CONSTRAINT_LEN,
-					render: {
-						visible: false
-					}
+					render: { visible: false }
 				});
-				Composite.add(this.jellyfishHeadSegments, Constraint.create({
+				Composite.add(this.headSegments, Constraint.create({
 					bodyA: headCenter,
 					bodyB: segments.bodies.at((dir - 1) / 2),
-					pointA: { x: headCenterWidth * 0.5 * dir, y: yRel * headSegmentHeight },
+					pointA: { x: this.headCenterWidth * 0.5 * dir, y: yRel * headSegmentHeight },
 					pointB: { x: headSegmentWidth * loc * -dir, y: yRel * headSegmentHeight },
 					stiffness: stiffness,
 					damping: damping,
 					length: Jellyfish.HEAD_RIM_CONSTRAINT_LEN,
-					render: {
-						visible: false
-					}
+					render: { visible: false }
 				}));
 			});
 
 		});
-		Composite.add(this.jellyfishComposite, this.jellyfishHeadSegments);
+		Composite.add(this.composite, this.headSegments);
 
-		this.jellyfishTentacles = [];
+		this.tentacles = [];
 		this.numTentacles = Jellyfish.TENTACLE_BASE_NUM + Random.getRandomInt(-2, 2);
 		const tentacleNumSegments = tentacleLen / Jellyfish.TENTACLE_SEGMENT_H;
 		const tentacleSegmentWidth = width * Jellyfish.TENTACLE_SEGMENT_W_TO_WIDTH;
@@ -193,12 +189,8 @@ export class Jellyfish extends Animal {
 							mask: 0
 						},
 						frictionAir: Jellyfish.TENTACLE_FRICTION,
-						render: {
-							fillStyle: color,
-							opacity: Jellyfish.TENTACLE_OPACITY,
-							visible: ind != 0,
-						},
-						label: "Jellyfish"
+						render: { fillStyle: 'white' },
+						label: "Jellyfish",
 					});
 					ind++
 					return segment;
@@ -206,15 +198,13 @@ export class Jellyfish extends Animal {
 			);
 			[-0.2, 0.2].forEach((xOffset) => {
 				Composites.chain(tentacle, xOffset, 0.5, xOffset, -0.5, {
-					stiffness: Jellyfish.constraintStiffness,
-					length: Jellyfish.constraintLength,
-					render: {
-						visible: false
-					}
+					stiffness: Jellyfish.CONSTRAINT_STIFFNESS,
+					length: Jellyfish.CONSTRAINT_LENGTH,
+					render: { visible: false }
 				});
 			});
-			this.jellyfishTentacles.push(tentacle);
-			Composite.add(this.jellyfishComposite, tentacle);
+			this.tentacles.push(tentacle);
+			Composite.add(this.composite, tentacle);
 		}
 
 		// INFO: INITIALIZE ARMS
@@ -222,17 +212,18 @@ export class Jellyfish extends Animal {
 		const armCircleWidth = width * Jellyfish.ARM_BASE_W_TO_WIDTH;
 		const armSpaceBetween = width * Jellyfish.ARM_GAP_TO_WIDTH;
 		const armRelY = headSegmentHeight;
-		this.jellyfishArms = [];
+		this.arms = [];
 		function armCirleRadiusFunc(x: number) {
 			return armCircleWidth * (-(x ** 2) + 1);
 		}
 		for (let i = 0; i < numArms; i++) {
 			let ind = 0;
-			const armSegments = (tentacleLen * Jellyfish.ARM_TO_TENTACLE_LENGTH) / (armCircleWidth * 2 * 0.75) + Random.getRandomInt(-5, 5);
+			const yOffset = Random.uniform(0, width * 0.1);
+			const armSegments = (tentacleLen * Jellyfish.ARM_TO_TENTACLE_LENGTH) / (armCircleWidth * 2 * 0.75) + Random.getRandomInt(-3, 3);
 			const armRelX = armSpaceBetween * (i - (numArms - 1) / 2);
 			let arm = Composites.stack(
 				this.head!.position.x + armRelX,
-				this.head!.position.y + armRelY,
+				this.head!.position.y + armRelY + yOffset,
 				1, armSegments, 0, 0,
 				(x: number, y: number) => {
 					const circleRadius = Interpolate.map(armCirleRadiusFunc, ind, 0, armSegments, 0, 1);
@@ -243,134 +234,183 @@ export class Jellyfish extends Animal {
 							mask: 0
 						},
 						frictionAir: Jellyfish.ARM_FRICTION,
-						render: {
-							fillStyle: color,
-							opacity: Jellyfish.ARM_OPACITY
-						},
-						label: "Jellyfish"
-					});
+						label: "Jellyfish",
+						render: { fillStyle: 'white' },
+
+					}, 10);
 					ind++;
 					Body.setMass(segment, segment.mass / 5);
 					return segment;
 				}
 			);
 			Composites.chain(arm, 0, 0.5, 0, -0.5, {
-				stiffness: Jellyfish.constraintStiffness,
-				length: Jellyfish.constraintLength,
-				render: {
-					visible: false
-				}
+				stiffness: Jellyfish.CONSTRAINT_STIFFNESS,
+				length: Jellyfish.CONSTRAINT_LENGTH,
+				render: { visible: false }
 			});
-			this.jellyfishArms.push(arm)
-			Composite.add(this.jellyfishComposite, arm);
+			this.arms.push(arm)
+			Composite.add(this.composite, arm);
 
 			[-0.5, 0.5].forEach((xOffset) => {
-				Composite.add(this.jellyfishComposite, Constraint.create({
+				Composite.add(this.composite, Constraint.create({
 					bodyA: this.head,
 					bodyB: arm.bodies[0],
-					pointA: { x: armRelX, y: armRelY },
+					pointA: { x: armRelX, y: armRelY + yOffset },
 					pointB: { x: xOffset * armCircleWidth, y: -armCircleWidth / 2 },
 					stiffness: Jellyfish.HEAD_RIM_OUTER_STIFFNESS,
 					length: armCircleWidth / 2,
-					render: {
-						visible: false
-					}
+					render: { visible: false }
 				}))
 			})
 		}
-		this.jellyfishGraphics = new Map<Graphics, Body>();
-		this.jellyfishArms.forEach((arm) => {
-			Matter2Pixi.compositeToGraphics(arm, this.jellyfishGraphics);
+		this.graphic2BodyMap = new Map<Graphics, Body>();
+		this.arms.forEach((arm) => {
+			Matter2Pixi.compositeToGraphics(arm, this.graphic2BodyMap);
 		});
-		this.jellyfishTentacles.forEach((arm) => {
-			Matter2Pixi.compositeToGraphics(arm, this.jellyfishGraphics);
+		this.tentacles.forEach((arm) => {
+			Matter2Pixi.compositeToGraphics(arm, this.graphic2BodyMap);
 		});
+		this.mass = 0;
+		Composite.allBodies(this.composite).forEach((body) => {
+			this.mass += body.mass;
+		});
+		this.baseAngle = Vector.normalise(Vector.sub(this.headEdgePieces[1]!.position, this.headEdgePieces[0]!.position));
+		this.direction = Vector.normalise(Vector.perp(this.baseAngle, true));
 		this.updateTentacleAttachments(true);
+		this.fakeHead = new Graphics();
+		this.setOpacity(Jellyfish.OPACITY);
+		this.setTint(color);
+		this.opacitySpring = new SpringValue(Jellyfish.OPACITY);
+		this.colorSpring = new SpringValue(color);
 	}
 
-	private updateFakeHeadGraphic(pixiApp: Application) {
+	private updateFakeHeadGraphic() {
 		const headPoints: Vector[] = [];
-		Composite.allBodies(this.jellyfishHeadSegments).forEach((body) => {
+		Composite.allBodies(this.headSegments).forEach((body) => {
 			body.vertices.forEach(point => { headPoints.push(point) });
 		});
-		const headHull = Vertices.hull(<Vertex[]>headPoints);
+		this.headHull = Vertices.hull(<Vertex[]>headPoints);
+		this.position = Vertices.centre(this.headHull);
 
-		pixiApp.stage.removeChild(<any>this.fakeHead);
-		this.fakeHead = new Graphics();
-		this.fakeHead.alpha = Jellyfish.HEAD_OPACITY;
-		this.fakeHead.fill(this.head.render.fillStyle);
-		this.fakeHead.moveTo(headHull[0].x, headHull[0].y);
-		for (let i = 1; i < headHull.length; i++) {
-			this.fakeHead.lineTo(headHull[i].x, headHull[i].y);
+		this.fakeHead.clear();
+		this.fakeHead.fill(0xffffff);
+		this.fakeHead.moveTo(this.headHull[0].x, this.headHull[0].y);
+		for (let i = 1; i < this.headHull.length; i++) {
+			this.fakeHead.lineTo(this.headHull[i].x, this.headHull[i].y);
 		}
 		this.fakeHead.closePath();
 		this.fakeHead.fill();
-		pixiApp.stage.addChild(this.fakeHead);
 	}
 
 	private updateTentacleAttachments(first: boolean) {
-		const left = this.headEdgePieces[0]!.position;
-		const right = this.headEdgePieces[1]!.position;
-		const base = Vector.sub(right, left);
+		const left = this.headEdgePieces[0]!.vertices[1];
+		const right = this.headEdgePieces[1]!.vertices[2];
+		const totLen = Vector.magnitude(Vector.sub(right, left));
 		for (let i = 0; i < this.numTentacles; i++) {
-			const relX = Interpolate.map((x) => x, i, 0, this.numTentacles, 0, 1);
-			const position = Vector.add(left, Vector.mult(base, relX));
-			const dir = Vector.sub(position, this.jellyfishTentacles[i].bodies[0].position);
+			const relX = Interpolate.map((x) => x, i, 0, this.numTentacles, 0, totLen);
+			const position = Vector.add(left, Vector.mult(this.baseAngle!, relX));
+			const tentacleBase = this.tentacles[i].bodies[0];
+			const tentaclePoint = Vector.mult(Vector.add(tentacleBase.vertices[0], tentacleBase.vertices[1]), 0.5);
+			const dir = Vector.sub(position, tentaclePoint);
 			if (!first) {
-				Body.setVelocity(this.jellyfishTentacles[i].bodies[0], Vector.mult(dir, 0.5));
+				Body.setVelocity(tentacleBase, Vector.mult(dir, 0.7));
 			} else {
 				Composite.translate(
-					this.jellyfishTentacles[i],
-					Vector.sub(position, this.jellyfishTentacles[i].bodies[0].position),
+					this.tentacles[i],
+					Vector.sub(position, tentacleBase.position),
 					true,
 				);
 			}
 		}
 	}
 
+	private setTint(color: ColorSource) {
+		if (this.fakeHead.tint == color) return;
+		this.graphic2BodyMap.forEach((_, graphic) => {
+			graphic.tint = color;
+		});
+		if (this.fakeHead)
+			this.fakeHead.tint = color;
+	}
+
+	private setOpacity(opacity: number) {
+		if (this.fakeHead.alpha == opacity) return;
+		this.graphic2BodyMap.forEach((_, graphic) => {
+			graphic.alpha = opacity;
+		});
+		if (this.fakeHead)
+			this.fakeHead.alpha = opacity;
+	}
+
 	private behavior() {
 		if (!this.runBehavior) return;
-		if (this.elapsedMS % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_COMPRESS_DURATION) {
-			const baseAngle = Vector.sub(this.headEdgePieces[1]!.position, this.headEdgePieces[0]!.position);
-			const rightPushAngle = Vector.normalise(Vector.rotate(baseAngle, -Math.PI * 0.1));
-			const leftPushAngle = Vector.normalise(Vector.rotate(baseAngle, -Math.PI * 0.9));
-			const rightPushForce = Vector.mult(rightPushAngle, 0.00007);
-			const leftPushForce = Vector.mult(leftPushAngle, 0.00007);
-			Body.applyForce(this.headEdgePieces[0]!, this.headEdgePieces[0]!.position, leftPushForce);
-			Body.applyForce(this.headEdgePieces[1]!, this.headEdgePieces[1]!.position, rightPushForce);
-		} else if (this.elapsedMS % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_FORCE_DURATION + Jellyfish.SWIM_COMPRESS_DURATION) {
-			const baseAngle = Vector.sub(this.headEdgePieces[1]!.position, this.headEdgePieces[0]!.position);
-			const pushAngle = Vector.normalise(Vector.rotate(baseAngle, -Math.PI * 0.5));
-			const pushForce = Vector.mult(pushAngle, 0.0001);
-			Body.applyForce(this.head, this.head.position, pushForce);
+		if (!this.mouse) return;
+
+		if (this.elapsedMS * this.swimIntervalModifier % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_COMPRESS_DURATION) {
+			const rightPushAngle = Vector.normalise(Vector.rotate(this.direction!, Math.PI * 0.4));
+			const leftPushAngle = Vector.normalise(Vector.rotate(this.direction!, Math.PI * -0.4));
+			const rightPushF = Vector.mult(rightPushAngle, 0.00003 * this.mass);
+			const leftPushF = Vector.mult(leftPushAngle, 0.00003 * this.mass);
+			Body.applyForce(this.headEdgePieces[0]!, this.headEdgePieces[0]!.position, leftPushF);
+			Body.applyForce(this.headEdgePieces[1]!, this.headEdgePieces[1]!.position, rightPushF);
+		} else if (this.elapsedMS * this.swimIntervalModifier % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_FORCE_DURATION + Jellyfish.SWIM_COMPRESS_DURATION) {
+			const pushForce = Vector.mult(this.direction!!, 0.00003 * this.mass);
+			const toTarget = Vector.sub(this.mouse!.position, this.position!);
+
+			// NOTE: positive means turn right
+			let angleToTarget = Math.atan2(toTarget.y, toTarget.x) - Math.atan2(this.direction!.y, this.direction!.x);
+			if (angleToTarget > Math.PI) angleToTarget -= 2 * Math.PI;
+			if (angleToTarget < -Math.PI) angleToTarget += 2 * Math.PI;
+			angleToTarget = -Math.sign(angleToTarget) * Jellyfish.MAX_TURN_RATIO * this.headCenterWidth;
+			const headOffset = Vector.add(this.head.position, Vector.mult(this.baseAngle!, angleToTarget));
+			Body.applyForce(this.head, headOffset, pushForce);
 		}
 	}
 
-	override init(engine: Engine, pixiApp: Application) {
-		this.pixiApp = pixiApp;
-		Composite.add(engine.world, this.jellyfishComposite);
-		this.jellyfishGraphics.forEach((_, graphic) => {
+	init(engine: Engine, pixiApp: Application, mouse: Mouse) {
+		Composite.add(engine.world, this.composite);
+		this.graphic2BodyMap.forEach((_, graphic) => {
 			pixiApp.stage.addChild(graphic);
 		})
+		pixiApp.stage.addChild(this.fakeHead);
+		this.mouse = mouse;
+		this.initialized = true;
 	}
 
-	override update(elapsedMS: number) {
+	update(elapsedMS: number) {
 		this.elapsedMS += elapsedMS;
-		this.jellyfishGraphics.forEach((body, graphic) => {
+		this.graphic2BodyMap.forEach((body, graphic) => {
 			graphic.x = body.position.x;
 			graphic.y = body.position.y;
 			graphic.rotation = body.angle;
 		})
-		this.updateFakeHeadGraphic(this.pixiApp!);
+		this.baseAngle = Vector.normalise(Vector.sub(this.headEdgePieces[1]!.position, this.headEdgePieces[0]!.position));
+		this.direction = Vector.normalise(Vector.perp(this.baseAngle, true));
+		this.updateFakeHeadGraphic();
 		this.updateTentacleAttachments(false);
+		this.setOpacity(this.opacitySpring.get());
+		this.setTint(this.colorSpring.get());
 		this.behavior();
 	}
 
-	stopBehavior() {
-		this.runBehavior = false;
+	setHovered() {
+		if (this.isHovered) return;
+		this.isHovered = true;
+		if (this.onMouseEnter) this.onMouseEnter(this);
+		this.opacitySpring.stop();
+		this.opacitySpring.start(Jellyfish.HOVER_OPACITY);
 	}
 
-	startBehavior() {
-		this.runBehavior = true;
+	setUnhovered() {
+		if (!this.isHovered) return;
+		this.isHovered = false;
+		if (this.onMouseLeave) this.onMouseLeave(this);
+		this.opacitySpring.stop();
+		this.opacitySpring.start(Jellyfish.OPACITY);
+	}
+
+	shiftColor(color: string) {
+		this.colorSpring.stop();
+		this.colorSpring.start(color);
 	}
 }
