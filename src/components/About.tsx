@@ -17,7 +17,7 @@ export default function About() {
 	return (
 		<Page
 			titleLead="This is"
-			title="Who I Am."
+			title="who I am."
 			textAccent="text-nteal"
 		>
 			<AboutEntry
