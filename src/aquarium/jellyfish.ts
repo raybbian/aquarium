@@ -48,7 +48,7 @@ export class Jellyfish {
 	private static CONSTRAINT_LENGTH = 0;
 	private static OPACITY = 0.5;
 	private static HOVER_OPACITY = 0.7;
-	private static MAX_TURN_RATIO = 0.9;
+	private static MAX_TURN_RATIO = 0.75;
 
 	private static HEAD_FRICTION = 0.01;
 	private static HEAD_NUM_SEGMENTS = 10;
@@ -74,7 +74,7 @@ export class Jellyfish {
 
 	private static SWIM_INTERVAL_MS = 3000;
 	private static SWIM_COMPRESS_DURATION = 500;
-	private static SWIM_FORCE_DURATION = 800;
+	private static SWIM_FORCE_DURATION = 600;
 
 	private static CAT_MOUSE = 1 << 0;
 	private static CAT_HEAD_CENTER = 1 << 1;

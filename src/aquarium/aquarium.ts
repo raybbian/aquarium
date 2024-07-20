@@ -1,4 +1,4 @@
-import { Engine, Composite, Mouse, MouseConstraint, Vertices } from 'matter-js';
+import { Engine, Composite, Mouse, MouseConstraint, Vertices, Runner } from 'matter-js';
 import { Jellyfish } from '@/aquarium/jellyfish';
 import { Application } from 'pixi.js';
 
@@ -52,9 +52,10 @@ export default class Aquarium {
 		})
 		Composite.add(this.engine.world, [mouseConstraint]);
 
-
-		this.pixiApp.ticker.maxFPS = 120;
-		this.pixiApp.ticker.minFPS = 120;
+		const runner = Runner.create({
+			delta: 1000 / 120
+		})
+		Runner.run(runner, this.engine);
 		this.pixiApp!.ticker.add((ticker) => {
 			this.jellyfish.forEach((jfish) => {
 				jfish.update(ticker.elapsedMS);
@@ -67,7 +68,6 @@ export default class Aquarium {
 					jfish.setUnhovered();
 				}
 			})
-			Engine.update(this.engine!, ticker.deltaMS);
 		})
 
 		// NOTE: initialize jellyfish that were added before initialization
