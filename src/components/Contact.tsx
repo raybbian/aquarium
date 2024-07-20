@@ -1,5 +1,6 @@
 import { Page } from "@/components/Utils"
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 function ContactEntry({ subject, description }: {
 	subject: string;
@@ -14,6 +15,11 @@ function ContactEntry({ subject, description }: {
 }
 
 export default function Contact() {
+	const [email, setEmail] = useState('mailto:hi@gmail.com');
+	useEffect(() => {
+		setEmail('mailto:raybbian@gmail.com');
+	}, [])
+
 	return (
 		<Page
 			titleLead="Please,"
@@ -35,7 +41,7 @@ export default function Contact() {
 			<div className="w-full flex flex-row justify-center gap-8">
 				<Link
 					className="text-2xl text-nmagenta font-semibold underline underline-offset-4"
-					href={'mailto:raybbian@gmail.com'}
+					href={email}
 					target="_blank"
 				>
 					Email
