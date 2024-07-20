@@ -52,7 +52,6 @@ export default class Aquarium {
 		})
 		Composite.add(this.engine.world, [mouseConstraint]);
 
-		this.pixiApp.ticker.maxFPS = 30;
 		let curDeltaMS = 0;
 		const tickIntervalMS = 1000 / 120;
 		this.pixiApp!.ticker.add((ticker) => {
