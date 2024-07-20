@@ -44,15 +44,15 @@ export class Jellyfish {
 	// NOTE: tentacle information
 	private numTentacles: number;
 
-	private static CONSTRAINT_STIFFNESS = 0.4;
+	private static CONSTRAINT_STIFFNESS = 0.3;
 	private static CONSTRAINT_LENGTH = 0;
 	private static OPACITY = 0.5;
 	private static HOVER_OPACITY = 0.7;
-	private static MAX_TURN_RATIO = 0.75;
+	private static MAX_TURN_RATIO = 0.65;
 
 	private static HEAD_FRICTION = 0.01;
 	private static HEAD_NUM_SEGMENTS = 10;
-	private static HEAD_SEGMENT_H_TO_WIDTH = 0.12;
+	private static HEAD_SEGMENT_H_TO_WIDTH = 0.1;
 	private static HEAD_CENTER_W_TO_WIDTH = 0.2;
 	private static HEAD_RIM_OUTER_STIFFNESS = 0.9;
 	private static HEAD_RIM_INNER_STIFFNESS = 0.1;
@@ -72,9 +72,10 @@ export class Jellyfish {
 	private static ARM_FRICTION = 0.02;
 	private static ARM_TO_TENTACLE_LENGTH = 0.6;
 
-	private static SWIM_INTERVAL_MS = 3000;
-	private static SWIM_COMPRESS_DURATION = 500;
-	private static SWIM_FORCE_DURATION = 600;
+	private static SWIM_INTERVAL_MS = 4000;
+	private static SWIM_COMPRESS_DURATION = 400;
+	private static SWIM_DECOMPRESS_DURATION = 300;
+	private static SWIM_FORCE_DURATION = 500;
 
 	private static CAT_MOUSE = 1 << 0;
 	private static CAT_HEAD_CENTER = 1 << 1;
@@ -313,7 +314,7 @@ export class Jellyfish {
 			const tentaclePoint = Vector.mult(Vector.add(tentacleBase.vertices[0], tentacleBase.vertices[1]), 0.5);
 			const dir = Vector.sub(position, tentaclePoint);
 			if (!first) {
-				Body.setVelocity(tentacleBase, Vector.mult(dir, 0.7));
+				Body.setVelocity(tentacleBase, Vector.mult(dir, 0.5));
 			} else {
 				Composite.translate(
 					this.tentacles[i],
@@ -353,8 +354,8 @@ export class Jellyfish {
 			const leftPushF = Vector.mult(leftPushAngle, 0.00003 * this.mass);
 			Body.applyForce(this.headEdgePieces[0]!, this.headEdgePieces[0]!.position, leftPushF);
 			Body.applyForce(this.headEdgePieces[1]!, this.headEdgePieces[1]!.position, rightPushF);
-		} else if (this.elapsedMS * this.swimIntervalModifier % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_FORCE_DURATION + Jellyfish.SWIM_COMPRESS_DURATION) {
-			const pushForce = Vector.mult(this.direction!!, 0.00003 * this.mass);
+		} else if (this.elapsedMS * this.swimIntervalModifier % Jellyfish.SWIM_INTERVAL_MS < Jellyfish.SWIM_DECOMPRESS_DURATION + Jellyfish.SWIM_FORCE_DURATION + Jellyfish.SWIM_COMPRESS_DURATION) {
+			const pushForce = Vector.mult(this.direction!!, 0.00005 * this.mass);
 			const toTarget = Vector.sub(this.mouse!.position, this.position!);
 
 			// NOTE: positive means turn right
@@ -378,6 +379,7 @@ export class Jellyfish {
 	}
 
 	update(elapsedMS: number) {
+		console.log(elapsedMS);
 		this.elapsedMS += elapsedMS;
 		this.graphic2BodyMap.forEach((body, graphic) => {
 			graphic.x = body.position.x;

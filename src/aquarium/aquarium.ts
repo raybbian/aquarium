@@ -52,13 +52,18 @@ export default class Aquarium {
 		})
 		Composite.add(this.engine.world, [mouseConstraint]);
 
-		const runner = Runner.create({
-			delta: 1000 / 120
-		})
-		Runner.run(runner, this.engine);
+		this.pixiApp.ticker.maxFPS = 30;
+		let curDeltaMS = 0;
+		const tickIntervalMS = 1000 / 120;
 		this.pixiApp!.ticker.add((ticker) => {
+			curDeltaMS += ticker.deltaMS;
+
 			this.jellyfish.forEach((jfish) => {
-				jfish.update(ticker.elapsedMS);
+				let tmpDeltaMS = curDeltaMS;
+				while (tmpDeltaMS > tickIntervalMS) {
+					jfish.update(tickIntervalMS);
+					tmpDeltaMS -= tickIntervalMS;
+				}
 
 				// NOTE: handle hover functionality
 				if (!jfish.headHull) return;
@@ -68,6 +73,11 @@ export default class Aquarium {
 					jfish.setUnhovered();
 				}
 			})
+
+			while (curDeltaMS > tickIntervalMS) {
+				Engine.update(this.engine!, tickIntervalMS);
+				curDeltaMS -= tickIntervalMS;
+			}
 		})
 
 		// NOTE: initialize jellyfish that were added before initialization
