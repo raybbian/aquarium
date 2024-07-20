@@ -53,9 +53,11 @@ export default class Aquarium {
 		Composite.add(this.engine.world, [mouseConstraint]);
 
 
+		this.pixiApp.ticker.maxFPS = 120;
+		this.pixiApp.ticker.minFPS = 120;
 		this.pixiApp!.ticker.add((ticker) => {
 			this.jellyfish.forEach((jfish) => {
-				jfish.update(ticker.deltaMS);
+				jfish.update(ticker.elapsedMS);
 
 				// NOTE: handle hover functionality
 				if (!jfish.headHull) return;

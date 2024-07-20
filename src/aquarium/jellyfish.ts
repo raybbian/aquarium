@@ -48,11 +48,11 @@ export class Jellyfish {
 	private static CONSTRAINT_LENGTH = 0;
 	private static OPACITY = 0.5;
 	private static HOVER_OPACITY = 0.7;
-	private static MAX_TURN_RATIO = 1;
+	private static MAX_TURN_RATIO = 0.9;
 
 	private static HEAD_FRICTION = 0.01;
 	private static HEAD_NUM_SEGMENTS = 10;
-	private static HEAD_SEGMENT_H_TO_WIDTH = 0.1;
+	private static HEAD_SEGMENT_H_TO_WIDTH = 0.12;
 	private static HEAD_CENTER_W_TO_WIDTH = 0.2;
 	private static HEAD_RIM_OUTER_STIFFNESS = 0.9;
 	private static HEAD_RIM_INNER_STIFFNESS = 0.1;
