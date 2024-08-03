@@ -23,7 +23,7 @@ export default function Main() {
 		aquarium.current = new Aquarium(aquariumContainer.current);
 		aquarium.current.init();
 		aquarium.current.addJellyfish(new Jellyfish(
-			aquariumContainer.current.clientWidth / 3,
+			aquariumContainer.current.clientWidth / 5,
 			aquariumContainer.current.clientHeight + 50,
 			250, 400, '#56CFE1')
 		);

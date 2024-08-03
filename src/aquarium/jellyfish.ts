@@ -379,7 +379,6 @@ export class Jellyfish {
 	}
 
 	update(elapsedMS: number) {
-		console.log(elapsedMS);
 		this.elapsedMS += elapsedMS;
 		this.graphic2BodyMap.forEach((body, graphic) => {
 			graphic.x = body.position.x;

@@ -53,7 +53,7 @@ export default class Aquarium {
 		Composite.add(this.engine.world, [mouseConstraint]);
 
 		let curDeltaMS = 0;
-		const tickIntervalMS = 1000 / 120;
+		const tickIntervalMS = 1000 / 60;
 		this.pixiApp!.ticker.add((ticker) => {
 			curDeltaMS += ticker.deltaMS;
 
